@@ -56,22 +56,29 @@ class Code:
         '''
 
     get_data = '''
-        def get_data(self, table_name: str):
+        def get_data_frame(self, table_name: str) -> pd.DataFrame:
             """
-            Retorna todos os dados de uma tabela no banco de dados SQLite.
-    
-            Args:
-            - table_name: str - o nome da tabela da qual os dados serão retornados.
-    
-            Returns:
-            - List[Tuple] - uma lista de tuplas contendo todos os dados da tabela.
+            Retorna os dados da tabela especificada em um pandas DataFrame.
+        
+            Parâmetros:
+                table_name (str): nome da tabela a ser consultada.
+        
+            Retorno:
+                pd.DataFrame: DataFrame contendo as informações da tabela.
             """
-
-            # Executa uma consulta SQL simples usando o método execute() na conexão do banco de dados.
-            cursor = self.conn.execute(f"SELECT * from {table_name}")
-            
-            # Retorna todos os resultados da consulta usando o método fetchall() do objeto cursor.
-            return cursor.fetchall()
+            # Executa a query para obter todos os dados da tabela
+            data_array = self.conn.execute(f"SELECT * from {table_name}").fetchall()
+        
+            # Executa a query para obter as informações das colunas da tabela
+            data_info = self.conn.execute(f"PRAGMA table_info({table_name});").fetchall()
+        
+            # Extrai os nomes das colunas e armazena em uma lista
+            columns_names = [column[1] for column in data_info]
+        
+            # Cria um DataFrame a partir da lista de tuplas
+            df = pd.DataFrame(data_array, columns=columns_names)
+        
+            return df
         '''
 
 
@@ -96,8 +103,10 @@ class DatabaseManager:
         self.conn.executemany(query, data)
 
     def get_data(self, table_name: str):
-        cursor = self.conn.execute(f"SELECT * from {table_name}")
-        return cursor.fetchall()
+        data_array = self.conn.execute(f"SELECT * from {table_name}").fetchall()
+        data_info = self.conn.execute(f"PRAGMA table_info({table_name});").fetchall()
+        columns = [d[1] for d in data_info]
+        return pd.DataFrame(data_array, columns=columns)
 
     def close(self):
         self.conn.close()
@@ -144,10 +153,9 @@ def main_tab(session_state, db_manager: DatabaseManager):
         if table_name := st.text_input(
                 'Digite o nome da tabela para visualizar os dados:'
         ):
-            if data := db_manager.get_data(table_name):
-                df = pd.DataFrame(data)
-                print(df.values)
-                st.write(df)
+            data = db_manager.get_data(table_name)
+            if not data.empty:
+                st.write(data)
             else:
                 st.write(f"Nenhum dado encontrado na tabela {table_name}")
 
