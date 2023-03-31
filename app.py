@@ -1,6 +1,6 @@
 import sqlite3
 from typing import List, Tuple
-
+import ast
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -33,38 +33,62 @@ class Code:
     '''
 
     insert_data = '''
-    def insert_data(self, table_name: str, data: List[Tuple]):
-        """
-        Insere dados em uma tabela no banco de dados SQLite.
+        def insert_data(self, table_name: str, data: List[Tuple]):
+            """
+            Insere dados em uma tabela no banco de dados SQLite.
+    
+            Args:
+            - table_name: str - o nome da tabela na qual os dados serão inseridos.
+            - data: List[Tuple] - uma lista de tuplas contendo os valores a serem inseridos em cada coluna.
+    
+            Returns:
+            - None
+            """
+    
+            # Cria uma string de marcadores de posição para as colunas usando a função join().
+            placeholders = ", ".join(["?" for _ in range(len(data[0]))])
+            
+            # Define uma string de consulta SQL para inserir dados na tabela com a sintaxe INSERT INTO.
+            query = f"INSERT INTO {table_name} VALUES ({placeholders})"
+            
+            # Executa a consulta na conexão do banco de dados usando o método executemany().
+            self.conn.executemany(query, data)
+        '''
 
-        Args:
-        - table_name: str - o nome da tabela na qual os dados serão inseridos.
-        - data: List[Tuple] - uma lista de tuplas contendo os valores a serem inseridos em cada coluna.
+    get_data = '''
+        def get_data(self, table_name: str):
+            """
+            Retorna todos os dados de uma tabela no banco de dados SQLite.
+    
+            Args:
+            - table_name: str - o nome da tabela da qual os dados serão retornados.
+    
+            Returns:
+            - List[Tuple] - uma lista de tuplas contendo todos os dados da tabela.
+            """
 
-        Returns:
-        - None
-        """
-
-        # Cria uma string de marcadores de posição para as colunas usando a função join().
-        placeholders = ", ".join(["?" for _ in range(len(data[0]))])
-        
-        # Define uma string de consulta SQL para inserir dados na tabela com a sintaxe INSERT INTO.
-        query = f"INSERT INTO {table_name} VALUES ({placeholders})"
-        
-        # Executa a consulta na conexão do banco de dados usando o método executemany().
-        self.conn.executemany(query, data)
-    '''
+            # Executa uma consulta SQL simples usando o método execute() na conexão do banco de dados.
+            cursor = self.conn.execute(f"SELECT * from {table_name}")
+            
+            # Retorna todos os resultados da consulta usando o método fetchall() do objeto cursor.
+            return cursor.fetchall()
+        '''
 
 
 class DatabaseManager:
     def __init__(self, db_name: str):
         self.conn = sqlite3.connect(db_name)
+        self.__table_names: list[str] = []
+
+    @property
+    def table_names(self):
+        return self.__table_names
 
     def create_table(self, table_name: str, columns: List[Tuple[str, str]]):
         column_defs = ", ".join([f"{name} {_type}" for name, _type in columns])
         query = f"CREATE TABLE IF NOT EXISTS {table_name} ({column_defs})"
-
         self.conn.execute(query)
+        self.__table_names.append(table_name)
 
     def insert_data(self, table_name: str, data: List[Tuple]):
         placeholders = ", ".join(["?" for _ in range(len(data[0]))])
@@ -97,11 +121,13 @@ def main():
             st.code(Code.create_table, language='python')
         with st.expander('Inserindo dados'):
             st.code(Code.insert_data, language='python')
+        with st.expander('Obtendo dados'):
+            st.code(Code.get_data, language='python')
 
     db_manager.close()
 
 
-def main_tab(session_state, db_manager):
+def main_tab(session_state, db_manager: DatabaseManager):
     table_container, input_container, console_container = st.container(), st.container(), st.empty()
 
     with console_container:
@@ -114,8 +140,9 @@ def main_tab(session_state, db_manager):
             processing_input(db_manager, table_name)
 
     with table_container:
+        st.write(db_manager.table_names)
         if table_name := st.text_input(
-            'Digite o nome da tabela para visualizar os dados:'
+                'Digite o nome da tabela para visualizar os dados:'
         ):
             if data := db_manager.get_data(table_name):
                 df = pd.DataFrame(data)
@@ -125,15 +152,16 @@ def main_tab(session_state, db_manager):
                 st.write(f"Nenhum dado encontrado na tabela {table_name}")
 
 
-def processing_input(db_manager, table_name):
-    columns = st.text_input('Digite os nomes e tipos de dados das colunas (ex.: nome TEXT, idade INTEGER):')
-    columns = [tuple(c.strip().split()) for c in columns.split(",")]
-    db_manager.create_table(table_name, columns)
+def processing_input(db_manager: DatabaseManager, table_name):
+    if columns := st.text_input('Digite os nomes e tipos de dados das colunas (ex.: nome TEXT, idade INTEGER):',
+                                placeholder='nome TEXT, idade INTEGER'):
+        columns = [tuple(c.strip().split()) for c in columns.split(",")]
+        db_manager.create_table(table_name, columns)
 
-    data = st.text_input('Digite os dados a serem inseridos na tabela (ex.: ("João", 25), ("Maria", 30)):')
-    data = [tuple(d.strip().split(",")) for d in data.split("),")]
-    data = [(str(d).strip("("), str(d).strip(")")) for d in data]
-    db_manager.insert_data(table_name, data)
+        if data_str := st.text_input('Digite os dados a serem inseridos na tabela (ex.: ("João", 25), ("Maria", 30)):',
+                                     placeholder='("João", 25), ("Maria", 30)'):
+            data = ast.literal_eval(f"[{data_str}]")
+            db_manager.insert_data(table_name, data)
 
 
 if __name__ == '__main__':
