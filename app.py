@@ -4,8 +4,10 @@ import ast
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from streamlit.delta_generator import DeltaGenerator
 from streamlit_ace import st_ace
 from streamlit_embedcode import github_gist
+from typing import Optional, Union, Any
 
 
 class Code:
@@ -86,25 +88,48 @@ class DatabaseManager:
     def __init__(self, db_name: str):
         self.conn = sqlite3.connect(db_name)
         self.__table_names: list[str] = []
+        self.__log_container: Optional[DeltaGenerator] = None
+        self.__log = ""
 
     @property
-    def table_names(self):
+    def table_names(self) -> list[str]:
         return self.__table_names
+
+    def config_log(self, empty_container: DeltaGenerator):
+        self.__log_container = empty_container
+
+    def _append_to_log(self, txt: Union[str, Any], output: bool = False):
+        self.__log += f'\n-- OUTPUT: {str(txt)}' if output else f'\n{str(txt)}'
+        if self.__log_container:
+            self.__log_container.code(self.__log, language='sql')
+            print("--LOG--", self.__log)
 
     def create_table(self, table_name: str, columns: List[Tuple[str, str]]):
         column_defs = ", ".join([f"{name} {_type}" for name, _type in columns])
-        query = f"CREATE TABLE IF NOT EXISTS {table_name} ({column_defs})"
+        query = f"CREATE TABLE IF NOT EXISTS {table_name} ({column_defs});"
         self.conn.execute(query)
         self.__table_names.append(table_name)
+        self._append_to_log(query)
 
     def insert_data(self, table_name: str, data: List[Tuple]):
-        placeholders = ", ".join(["?" for _ in range(len(data[0]))])
-        query = f"INSERT INTO {table_name} VALUES ({placeholders})"
-        self.conn.executemany(query, data)
+        values_sql = ', '.join(["('{}', {})".format(*row) for row in data])
+        query = f"INSERT INTO {table_name} VALUES {values_sql};"
+
+        self.conn.execute(query)
+        self._append_to_log(query)
 
     def get_data(self, table_name: str):
-        data_array = self.conn.execute(f"SELECT * from {table_name}").fetchall()
-        data_info = self.conn.execute(f"PRAGMA table_info({table_name});").fetchall()
+        select_query = f"SELECT * from {table_name};"
+        pragma_query = f"PRAGMA table_info({table_name});"
+
+        data_array = self.conn.execute(select_query).fetchall()
+        data_info = self.conn.execute(pragma_query).fetchall()
+
+        self._append_to_log(select_query)
+        self._append_to_log(data_array, output=True)
+        # self._append_to_log(pragma_query)
+        # self._append_to_log(f'-- {str(data_info)}')
+
         columns = [d[1] for d in data_info]
         return pd.DataFrame(data_array, columns=columns)
 
@@ -137,12 +162,9 @@ def main():
 
 
 def main_tab(session_state, db_manager: DatabaseManager):
-    table_container, input_container, console_container = st.container(), st.container(), st.empty()
+    table_container, input_container, log_container = st.container(), st.container(), st.empty()
 
-    with console_container:
-        st.write("Query:", session_state.get('query', 'Code Here'))
-        content = st_ace(language='sql', value=session_state.get('query', 'Code Here'), key="query-editor")
-        session_state['query'] = content
+    db_manager.config_log(log_container)
 
     with input_container:
         if table_name := st.text_input('Digite um nome para a tabela:'):
