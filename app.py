@@ -26,10 +26,10 @@ class Code:
 
         # Converte as tuplas em strings formatadas de coluna e tipo de dados usando a função join().
         column_defs = ", ".join([f"{name} {_type}" for name, _type in columns])
-        
+
         # Define uma string de consulta SQL para criar a tabela com a sintaxe CREATE TABLE.
         query = f"CREATE TABLE IF NOT EXISTS {table_name} ({column_defs})"
-        
+
         # Executa a consulta na conexão do banco de dados usando o método execute().
         self.conn.execute(query)
     '''
@@ -38,21 +38,21 @@ class Code:
         def insert_data(self, table_name: str, data: List[Tuple]):
             """
             Insere dados em uma tabela no banco de dados SQLite.
-    
+
             Args:
             - table_name: str - o nome da tabela na qual os dados serão inseridos.
             - data: List[Tuple] - uma lista de tuplas contendo os valores a serem inseridos em cada coluna.
-    
+
             Returns:
             - None
             """
-    
+
             # Cria uma string de marcadores de posição para as colunas usando a função join().
             placeholders = ", ".join(["?" for _ in range(len(data[0]))])
-            
+
             # Define uma string de consulta SQL para inserir dados na tabela com a sintaxe INSERT INTO.
             query = f"INSERT INTO {table_name} VALUES ({placeholders})"
-            
+
             # Executa a consulta na conexão do banco de dados usando o método executemany().
             self.conn.executemany(query, data)
         '''
@@ -61,25 +61,25 @@ class Code:
         def get_data_frame(self, table_name: str) -> pd.DataFrame:
             """
             Retorna os dados da tabela especificada em um pandas DataFrame.
-        
+
             Parâmetros:
                 table_name (str): nome da tabela a ser consultada.
-        
+
             Retorno:
                 pd.DataFrame: DataFrame contendo as informações da tabela.
             """
             # Executa a query para obter todos os dados da tabela
             data_array = self.conn.execute(f"SELECT * from {table_name}").fetchall()
-        
+
             # Executa a query para obter as informações das colunas da tabela
             data_info = self.conn.execute(f"PRAGMA table_info({table_name});").fetchall()
-        
+
             # Extrai os nomes das colunas e armazena em uma lista
             columns_names = [column[1] for column in data_info]
-        
+
             # Cria um DataFrame a partir da lista de tuplas
             df = pd.DataFrame(data_array, columns=columns_names)
-        
+
             return df
         '''
 
@@ -167,8 +167,7 @@ def main_tab(session_state, db_manager: DatabaseManager):
     db_manager.config_log(log_container)
 
     with input_container:
-        if table_name := st.text_input('Digite um nome para a tabela:'):
-            processing_input(db_manager, table_name)
+        processing_input(db_manager)
 
     with table_container:
         st.write(db_manager.table_names)
@@ -182,16 +181,27 @@ def main_tab(session_state, db_manager: DatabaseManager):
                 st.write(f"Nenhum dado encontrado na tabela {table_name}")
 
 
-def processing_input(db_manager: DatabaseManager, table_name):
-    if columns := st.text_input('Digite os nomes e tipos de dados das colunas (ex.: nome TEXT, idade INTEGER):',
-                                placeholder='nome TEXT, idade INTEGER'):
+def processing_input(db_manager: DatabaseManager):
+    table_name = st.text_input(
+        'Digite um nome para a tabela:',
+        placeholder='TESTES'
+    )
+
+    if columns := st.text_input(
+            'Digite os nomes e tipos de dados das colunas (ex.: nome TEXT, idade INTEGER):',
+            placeholder='nome TEXT, idade INTEGER',
+            disabled=not bool(table_name)
+    ):
         columns = [tuple(c.strip().split()) for c in columns.split(",")]
         db_manager.create_table(table_name, columns)
 
-        if data_str := st.text_input('Digite os dados a serem inseridos na tabela (ex.: ("João", 25), ("Maria", 30)):',
-                                     placeholder='("João", 25), ("Maria", 30)'):
-            data = ast.literal_eval(f"[{data_str}]")
-            db_manager.insert_data(table_name, data)
+    if data_str := st.text_input(
+            'Digite os dados a serem inseridos na tabela (ex.: ("João", 25), ("Maria", 30)):',
+            placeholder='("João", 25), ("Maria", 30)',
+            disabled=not bool(columns)
+    ):
+        data = ast.literal_eval(f"[{data_str}]")
+        db_manager.insert_data(table_name, data)
 
 
 if __name__ == '__main__':
