@@ -182,26 +182,28 @@ def main_tab(session_state, db_manager: DatabaseManager):
 
 
 def processing_input(db_manager: DatabaseManager):
-    table_name = st.text_input(
-        'Digite um nome para a tabela:',
-        placeholder='TESTES'
-    )
+    with st.form("Adicionando Tabelas"):
+        table_name = st.text_input(
+            'Digite um nome para a tabela:',
+            placeholder='TESTES'
+        )
 
-    if columns := st.text_input(
+        columns = st.text_input(
             'Digite os nomes e tipos de dados das colunas (ex.: nome TEXT, idade INTEGER):',
             placeholder='nome TEXT, idade INTEGER',
-            disabled=not bool(table_name)
-    ):
-        columns = [tuple(c.strip().split()) for c in columns.split(",")]
-        db_manager.create_table(table_name, columns)
 
-    if data_str := st.text_input(
+        )
+
+        data_str = st.text_input(
             'Digite os dados a serem inseridos na tabela (ex.: ("João", 25), ("Maria", 30)):',
             placeholder='("João", 25), ("Maria", 30)',
-            disabled=not bool(columns)
-    ):
-        data = ast.literal_eval(f"[{data_str}]")
-        db_manager.insert_data(table_name, data)
+        )
+
+        if st.form_submit_button("Submit"):
+            columns = [tuple(c.strip().split()) for c in columns.split(",")]
+            db_manager.create_table(table_name, columns)
+            data = ast.literal_eval(f"[{data_str}]")
+            db_manager.insert_data(table_name, data)
 
 
 if __name__ == '__main__':
